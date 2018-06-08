@@ -226,9 +226,13 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
   train_mall_names = train_rent$MALL_NAME
   test_mall_names = test_rent$MALL_NAME
   dest_mall_names = dest_rent$MALL_NAME
-  train_rent = train_rent[,!(names(train_rent)%in%c("MALL_NAME","DATE_ID")),with = FALSE]
-  test_rent = test_rent[,!(names(test_rent)%in%c("MALL_NAME","DATE_ID")),with = FALSE]
-  dest_rent = dest_rent[,!(names(dest_rent)%in%c("MALL_NAME","DATE_ID")),with = FALSE]
+  #commented 2018/6/8 for training with DATE_ID
+  # train_rent = train_rent[,!(names(train_rent)%in%c("MALL_NAME","DATE_ID")),with = FALSE]
+  # test_rent = test_rent[,!(names(test_rent)%in%c("MALL_NAME","DATE_ID")),with = FALSE]
+  # dest_rent = dest_rent[,!(names(dest_rent)%in%c("MALL_NAME","DATE_ID")),with = FALSE]
+  train_rent = train_rent[,!(names(train_rent)%in%c("MALL_NAME")),with = FALSE]
+  test_rent = test_rent[,!(names(test_rent)%in%c("MALL_NAME")),with = FALSE]
+  dest_rent = dest_rent[,!(names(dest_rent)%in%c("MALL_NAME")),with = FALSE]
   train_rent = data.frame(train_rent)
   test_rent = data.frame(test_rent)
   dest_rent = data.frame(dest_rent)

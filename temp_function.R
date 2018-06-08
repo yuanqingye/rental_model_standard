@@ -32,7 +32,7 @@ setcolorder(dest_env$rent_2017_filter_compare,c(1:8,ncol(dest_env$rent_2017_filt
 View(dest_env$rent_2017_filter_compare[abs(err2)>0.05 & abs(err2)<1])
 #in this model: 无锡锡山，北京至尊mall,成都佳灵商场，宜昌西陵商场，沈阳大东
 
-
+#Need to check which method is more sensitive to time change
 cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]])
 mall_cluster = kmeans(cluster_set[,-1],2,nstart = 20)
 mall_cluster$cluster
@@ -99,11 +99,12 @@ backup = temp_result_filter_no_adjacent[[4]]
 temp_result_filter_no_adjacent[[4]] = lapply(lapply(temp_result_filter_no_adjacent[[4]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
 temp_result_no_adjacent[[4]] = make_2017_comparison(temp_result_filter_no_adjacent[[4]])
 
-cpi = read_xlsx("~/data/cpi.xlsx")
+# cpi = read_xlsx("~/data/cpi.xlsx")
 
 
+
+#tune the parameter importance
 train_rent = getyearModeData()[[4]]
-
 library(caret)
 library(doMC)
 registerDoMC(cores = 4)
