@@ -78,29 +78,41 @@ View(result_compare[abs(err2)>0.05 & abs(err2)<1])
 
 pred_result = list()
 pred_result_filter = list()
-pred_result_filter[[4]] = seperate_then_cluster(4,201712)
+pred_result_filter[[4]] = seperate_then_cluster(4,201612)
 pred_result[[4]] = make_2018_comparison(pred_result_filter[[4]])
 
 pred_result_filter[[8]] = seperate_then_cluster(4,201712)
 pred_result[[8]] = make_2018_comparison(pred_result_filter[[8]])
 
+#this result come from model with DATE_ID variable for 2017
+pred_result_filter[[12]] = seperate_then_cluster(4,201612)
+pred_result[[12]] = make_2017_comparison(pred_result_filter[[12]])
+
+#this result come from model with DATE_ID variable for 2018
+pred_result_filter[[16]] = seperate_then_cluster(4,201712)
+pred_result[[16]] = make_2018_comparison(pred_result_filter[[16]])
+
 pred_result_filter_no_adjacent = list()
 pred_result_no_adjacent = list()
-pred_result_filter_no_adjacent[[4]] = seperate_then_cluster(4,201701:201712,FALSE)
-temp = pred_result_filter_no_adjacent[[4]]
+# 4,8 is normal case, without the DATE_ID, 12,16 with the DATE_ID 
+pred_result_filter_no_adjacent[[4]] = seperate_then_cluster(4,201601:201612,FALSE)
 pred_result_filter_no_adjacent[[4]] = lapply(lapply(pred_result_filter_no_adjacent[[4]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
-pred_result_no_adjacent[[4]] = make_2018_comparison(pred_result_filter_no_adjacent[[4]])
+pred_result_no_adjacent[[4]] = make_2017_comparison(pred_result_filter_no_adjacent[[4]])
 
-temp_result_filter_no_adjacent = list()
-temp_result_no_adjacent = list()
-temp_result_filter_no_adjacent[[4]] = seperate_then_cluster(4,201601:201612,FALSE)
-# temp = temp_result_filter_no_adjacent[[4]]
-backup = temp_result_filter_no_adjacent[[4]]
-temp_result_filter_no_adjacent[[4]] = lapply(lapply(temp_result_filter_no_adjacent[[4]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
-temp_result_no_adjacent[[4]] = make_2017_comparison(temp_result_filter_no_adjacent[[4]])
+pred_result_filter_no_adjacent[[8]] = seperate_then_cluster(4,201701:201712,FALSE)
+pred_result_filter_no_adjacent[[8]] = lapply(lapply(pred_result_filter_no_adjacent[[8]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
+pred_result_no_adjacent[[8]] = make_2018_comparison(pred_result_filter_no_adjacent[[8]])
 
-# cpi = read_xlsx("~/data/cpi.xlsx")
+pred_result_filter_no_adjacent[[12]] = seperate_then_cluster(4,201601:201612,FALSE)
+pred_result_filter_no_adjacent[[12]] = lapply(lapply(pred_result_filter_no_adjacent[[12]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
+pred_result_no_adjacent[[12]] = make_2017_comparison(pred_result_filter_no_adjacent[[12]])
 
+pred_result_filter_no_adjacent[[16]] = seperate_then_cluster(4,201701:201712,FALSE)
+pred_result_filter_no_adjacent[[16]] = lapply(lapply(pred_result_filter_no_adjacent[[16]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
+pred_result_no_adjacent[[16]] = make_2018_comparison(pred_result_filter_no_adjacent[[16]])
+
+# 在不相邻的情况下,时间变量影响小,且整体不上升
+# 在相邻情况下,时间变量影响大,且整体上升
 
 
 #tune the parameter importance
@@ -109,13 +121,20 @@ library(caret)
 library(doMC)
 registerDoMC(cores = 4)
 
+test_importance_data[["adjacent"]] = getyearModeData()
+test_importance_data[["notadjacent"]] = getyearModeData(12,201701:201712,TRUE,12,1)
+
 ptm <- proc.time()
 # define the control using a random forest selection function
 control <- rfeControl(functions=rfFuncs, method="cv", number=10)
 # run the RFE algorithm
-rfFunresults <- rfe(train_rent[,1:36], train_rent[,37], sizes=c(1:36), rfeControl=control)
+train_rent = test_importance_data[["adjacent"]][[4]]
+rfFunresults[["adjacent"]] <- rfe(train_rent[,1:37], train_rent[,38], sizes=c(1:36), rfeControl=control)
 ptm2 = proc.time() - ptm
 plot(rfFunresults,type=c("g", "o"))
+
+train_rent = test_importance_data[["notadjacent"]][[4]]
+rfFunresults[["notadjacent"]] <- rfe(train_rent[,1:37], train_rent[,38], sizes=c(1:36), rfeControl=control)
 
 # define the control using a random forest selection function
 control <- rfeControl(functions=lmFuncs, method="cv", number=10)
@@ -123,20 +142,22 @@ control <- rfeControl(functions=lmFuncs, method="cv", number=10)
 lmFunresults <- rfe(train_rent[,1:36], train_rent[,37], sizes=c(1:36), rfeControl=control)
 plot(lmFunresults,type=c("g", "o"))
 
-rent_year_data[[4]]
-
+# rent_year_data[[4]]
+# rent.boost = list()
+train_rent = test_importance_data[["adjacent"]][[4]]
+train_rent = test_importance_data[["notadjacent"]][[4]]
 ptm <- proc.time()
 library(gbm)
-rent.boost = gbm(rent ~ .-current_rent ,data = train_rent,distribution = "gaussian",n.trees = 100000,interaction.depth = 4)
-rent.boost
-para_rank1 = summary(rent.boost) #Summary gives a table of Variable Importance and a plot of Variable Importance
+rent.boost[["notadjacent"]] = gbm(rent ~ .-current_rent ,data = train_rent,distribution = "gaussian",n.trees = 100000,interaction.depth = 4)
+# rent.boost
+para_rank1 = summary(rent.boost[["notadjacent"]]) #Summary gives a table of Variable Importance and a plot of Variable Importance
 ptm3 = proc.time() - ptm
 
 # ensure results are repeatable
 set.seed(7)
 # load the library
 library(caret)
-# prepare training scheme
+# prepare training scheme_
 control <- trainControl(method="repeatedcv", number=10, repeats=3)
 ptm = proc.time()
 # train the model
