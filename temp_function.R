@@ -2,6 +2,7 @@ setwd("~/R_Projects/rental_model_standard")
 compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
 compare_2017_rent_data = compare_rent_data_raw[,c(1,3:10)]
 compare_2017_rent_data = data.table(compare_2017_rent_data)
+dest_env$result_2017_year_notadjacent = calModelResultOnTimespan(1,201601:201612,FALSE,12)
 dest_env$temp_2017_result = dest_env$result_2017_year_notadjacent[[1]][,.(pred_rent_2017 = sum(pred_rent)),by = mall_name]
 dest_env$temp_2017_result = data.table(dest_env$temp_2017_result)
 dest_env$rent_2017_compare = setDT(compare_2017_rent_data)[dest_env$temp_2017_result,on = "mall_name"]
@@ -17,6 +18,7 @@ View(cbind(test_env$cross_result_2017_halfyear_adjacent[[2]][,1],apply(test_env$
 
 
 mall_filter = rent_data_month[,.(record_num =.N),by = "MALL_NAME"][record_num>26,]$MALL_NAME
+
 dest_env$result_2017_year_adjacent_filter = calModelResultOnTimespan(12,201612,TRUE,12,1,mall_filter)
 setwd("~/R_Projects/rental_model_standard")
 compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
@@ -60,8 +62,31 @@ View(dest_env$rent_2017_filter_compare_mixed[abs(err2)>0.05 & abs(err2)<1])
 #in this model: 苏州园区，北京西四环，北京北五环，天津河东，天津东丽，成都佳灵，沈阳大东
 #nearly: 大同东信商场，大庆世博商场，赤峰新城商场
 
-temp_result_filter = list()
+# temp_result_filter = list()
 # temp_result = list()
+#old test, no cluster, with no detailed community data
+#the default dataset:rent_data_year with 42 matural cities no detailed community data
+temp_result_filter[[1]] = seperate_then_cluster(1)
+temp_result[[1]] = make_2017_comparison(temp_result_filter[[1]])
+rent_data_month_with_new_community_info = rent_data_month_raw[,-(33:41)]
+mallnames = unique(rent_data_month_with_new_community_info$MALL_NAME)
+
+redstar_location_copy = redstar_location
+redstar_location_copy$mall_name[3] = mallnames[14]
+redstar_location_copy$mall_name[39] = mallnames[54]
+#because original name is a little different, so I need to exchange the name
+temp = calCommunityInfonew(redstar_location_copy)
+# temp$mall_name[2] = "北京至尊Mall"
+# temp$mall_name[40] = "沈阳欧丽洛雅商场"
+rent_data_month_with_new_community_info = merge(rent_data_month_with_new_community_info,temp,by.x = "MALL_NAME",by.y = "mall_name",all.x = TRUE)
+# rent_data_month_with_new_community_info = rent_data_month_with_new_community_info[MALL_NAME %in% un_mature_mall,]
+# write.xlsx(rent_data_month_with_new_community_info,"~/data/rental_raw_data_new_community.xlsx")
+write.csv(rent_data_month_with_new_community_info,"~/data/rental_raw_data_new_community.csv")
+#new community data on 42 cities
+rent_data_year_new = getyearModeData(12,201612,mall_filter = temp_result[[1]]$mall_name,file_location = "~/data/rental_raw_data_new_community.csv")
+temp_result_filter[["newcommunitydata"]] = seperate_then_cluster(1,cluster_set = cbind(rent_data_year_new[[3]], rent_data_year_new[[6]]),file_location = "~/data/rental_raw_data_new_community.csv")
+temp_result[["newcommunitydata"]] = make_2017_comparison(temp_result_filter[["newcommunitydata"]])
+
 temp_result_filter[[3]] = seperate_then_cluster(3)
 temp_result[[3]] = make_2017_comparison(temp_result_filter[[3]])
 
@@ -79,7 +104,7 @@ View(result_compare[abs(err2)>0.05 & abs(err2)<1])
 pred_result = list()
 pred_result_filter = list()
 pred_result_filter[[4]] = seperate_then_cluster(4,201612)
-pred_result[[4]] = make_2018_comparison(pred_result_filter[[4]])
+pred_result[[4]] = make_2017_comparison(pred_result_filter[[4]])
 
 pred_result_filter[[8]] = seperate_then_cluster(4,201712)
 pred_result[[8]] = make_2018_comparison(pred_result_filter[[8]])
@@ -128,15 +153,22 @@ ptm <- proc.time()
 # define the control using a random forest selection function
 control <- rfeControl(functions=rfFuncs, method="cv", number=10)
 # run the RFE algorithm
+# train_rent = test_importance_data[["adjacent"]][[4]],result:rfFunresults[["adjacent"]]
 train_rent = test_importance_data[["adjacent"]][[4]]
 rfFunresults[["adjacent"]] <- rfe(train_rent[,1:37], train_rent[,38], sizes=c(1:36), rfeControl=control)
 ptm2 = proc.time() - ptm
-plot(rfFunresults,type=c("g", "o"))
+plot(rfFunresults[["adjacent"]],type=c("g", "o"))
+View(rfFunresults[["adjacent"]]$variables)
 
 train_rent = test_importance_data[["notadjacent"]][[4]]
 rfFunresults[["notadjacent"]] <- rfe(train_rent[,1:37], train_rent[,38], sizes=c(1:36), rfeControl=control)
+View(rfFunresults[["notadjacent"]]$variables)
 
-# define the control using a random forest selection function
+train_rent = rent_data_year_new[[4]]
+rfFunresults[["newcommunity"]] <- rfe(train_rent[,1:40], train_rent[,41], sizes=c(1:39), rfeControl=control)
+View(rfFunresults[["newcommunity"]]$variables)
+
+# define the control specify linear model function
 control <- rfeControl(functions=lmFuncs, method="cv", number=10)
 # run the RFE algorithm
 lmFunresults <- rfe(train_rent[,1:36], train_rent[,37], sizes=c(1:36), rfeControl=control)
@@ -146,13 +178,18 @@ plot(lmFunresults,type=c("g", "o"))
 # rent.boost = list()
 train_rent = test_importance_data[["adjacent"]][[4]]
 train_rent = test_importance_data[["notadjacent"]][[4]]
+train_rent = rent_data_year_new[[4]]
 ptm <- proc.time()
 library(gbm)
-rent.boost[["notadjacent"]] = gbm(rent ~ .-current_rent ,data = train_rent,distribution = "gaussian",n.trees = 100000,interaction.depth = 4)
+rent.boost[["newcommunity"]] = gbm(rent ~ .-current_rent ,data = train_rent,distribution = "gaussian",n.trees = 100000,interaction.depth = 4)
 # rent.boost
-para_rank1 = summary(rent.boost[["notadjacent"]]) #Summary gives a table of Variable Importance and a plot of Variable Importance
+para_rank1 = summary(rent.boost[["newcommunity"]]) #Summary gives a table of Variable Importance and a plot of Variable Importance
 ptm3 = proc.time() - ptm
 
+
+train_rent = test_importance_data[["adjacent"]][[4]]
+train_rent = test_importance_data[["notadjacent"]][[4]]
+train_rent = rent_data_year_new[[4]]
 # ensure results are repeatable
 set.seed(7)
 # load the library
@@ -161,12 +198,18 @@ library(caret)
 control <- trainControl(method="repeatedcv", number=10, repeats=3)
 ptm = proc.time()
 # train the model
-rf_model <- train(rent~., data=train_rent, method="rf", preProcess="scale", trControl=control,
+rf_model[["newcommunity"]] <- train(rent~., data=train_rent, method="rf", preProcess="scale", trControl=control,
                     importance = T)
 # estimate variable importance
-importance <- varImp(rf_model, scale=FALSE)
+importance <- varImp(rf_model[["newcommunity"]], scale=FALSE)
 ptm4 = proc.time() - ptm
 # summarize importance
 print(importance)
 # plot importance
 plot(importance)
+
+rent_data_0622 = read_xlsx("~/data/rent_data_0622.xlsx")
+#using model stored in cross_result to see the result of new store
+#clue:First kmeans the un matured mall together with other malls, then do the model
+# for infant malls, using original model and knn to seperate it, then do the model
+#seperate the training part and test/predict part

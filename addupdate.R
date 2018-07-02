@@ -278,6 +278,38 @@ calCommunityInfo <- function(redstar_location,redstar_result) {
   return(redstar_result)
 }
 
+calCommunityInfonew <- function(redstar_location) {
+  city = unique(redstar_location$city)
+  city = paste0(city,"市")
+  source("~/Rfile/R_impala.R") ##!!need to include that file
+  community_data_sql = "select id,city,province,area,name,address,plate,areamonut,roommount,buildingdate,longitude,latitude,buildingamount,pricesection,ownermallname from ods.ods_db_dragoneye_xiwa_redstar_community_dt"
+  community_data = read_data_impala_general(community_data_sql)
+  # always takes string before "市" to do the check
+  community_data$join_city = ifelse(!str_detect(community_data$city,"(\\w+)市$"),community_data$city,str_extract(community_data$city,"(\\w+)(?=市)"))
+  # merge shopping mall info with community's info
+  redstar_community_mixed_df = merge(y=redstar_location,x=community_data,by.y = "city",by.x = "join_city",all.y = TRUE)
+  # calculate distance from shopping mall to community
+  redstar_community_distance = distHaversine(redstar_community_mixed_df[,c('longitude.x','latitude.x')],redstar_community_mixed_df[,c('longitude.y','latitude.y')])
+  redstar_community_distance = cbind(redstar_community_mixed_df[,c("city","province","mall_name","area","name","address","plate","roommount","pricesection")],distance = redstar_community_distance)
+  redstar_community_distance = data.table(redstar_community_distance)
+  redstar_community_distance = redstar_community_distance[(!(city %in% c('北京市','上海市','深圳市','厦门市')) & pricesection < 100000)|(pricesection < 250000),]
+  # redstar_community_5km_number = redstar_community_distance[,sum(distance<=5000,na.rm = TRUE),by = mall_name]
+  # redstar_community_50km_number = redstar_community_distance[,sum(distance<=50000,na.rm = TRUE),by = mall_name]
+  redstar_community_5km_roominfo = redstar_community_distance[distance<=5000,.(communitynum = .N,roomnum = sum(roommount,na.rm = TRUE),roomnumavailablerate = sum(roommount!=0)/.N,pricemorethan50k = sum(pricesection>50000)/sum(pricesection!=0),pricemorethan25k = sum(pricesection>25000)/sum(pricesection!=0),pricemorethan10k = sum(pricesection>10000)/sum(pricesection!=0),pricemorethan5k = sum(pricesection>5000)/sum(pricesection!=0)),by = mall_name]
+  redstar_community_50km_roominfo = redstar_community_distance[distance<=50000,.(communitynum = .N,roomnum = sum(roommount,na.rm = TRUE),roomnumavailablerate = sum(roommount!=0)/.N,pricemorethan50k = sum(pricesection>50000)/sum(pricesection!=0),pricemorethan25k = sum(pricesection>25000)/sum(pricesection!=0),pricemorethan10k = sum(pricesection>10000)/sum(pricesection!=0),pricemorethan5k = sum(pricesection>5000)/sum(pricesection!=0)),by = mall_name]
+  # calculate community's average price data
+  temp_5km = redstar_community_distance[distance<=5000,.(totalprice = sum(roommount*pricesection,na.rm = TRUE),totalnum = sum(.SD[(roommount*pricesection!=0),roommount])),by = mall_name]
+  temp_5km[,avg_price:=totalprice/totalnum]
+  temp_50km = redstar_community_distance[distance<=50000,.(totalprice = sum(roommount*pricesection,na.rm = TRUE),totalnum = sum(.SD[(roommount*pricesection!=0),roommount])),by = mall_name]
+  temp_50km[,avg_price:=totalprice/totalnum]
+  redstar_community_5km_roominfo$avg_price = temp_5km$avg_price
+  redstar_community_50km_roominfo$avg_price = temp_50km$avg_price
+  redstar_community_50km_roominfo = data.frame(communitynum50 = redstar_community_50km_roominfo$communitynum,roomnum50 = redstar_community_50km_roominfo$roomnum,avg_price_50 = redstar_community_50km_roominfo$avg_price)
+  community_result = cbind(redstar_community_5km_roominfo,redstar_community_50km_roominfo)
+# redstar_result = merge(redstar_result,community_result,by = "mall_name")
+  return(community_result)
+  }
+
 testfun = function(redstar_result, redstar_location_update) {
   for (mallname in redstar_location_update$mall_name) {
     for (colname in colnames(redstar_result)) {

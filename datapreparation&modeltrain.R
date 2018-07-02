@@ -89,9 +89,9 @@ predictRentOnTimeAgo = function(timespan = 1,dest_date = 201712,passnum = 12,mal
   result = calModelResultOnTimespan(timespan,dest_date,mall_filter,FALSE,passnum)
 }
 
-calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL) {
+calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL,file_location = "~/data/rental_raw_data.csv") {
   #Train rf,nn,svm,gbm model and do cross validation for test set(last complete available record)
-  cross_result = makeCrossValidation(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected)
+  cross_result = makeCrossValidation(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected,file_location)
   rent_data_year =  cross_result[[1]]
   MSE.all.MALLS = cross_result[[2]]
   
@@ -117,8 +117,8 @@ calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnu
   return(result)
 }
 
-makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL){
-  rent_year_data = getyearModeData(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_filter)
+makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = "~/data/rental_raw_data.csv"){
+  rent_year_data = getyearModeData(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_filter,file_location)
   train_rent = rent_year_data[[4]]
   test_rent = rent_year_data[[5]]
   dest_rent = rent_year_data[[6]]
@@ -204,6 +204,7 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
   freeze_col = colnames(rent_data_month)[!(colnames(rent_data_month) %in% c(unuse_col,sum_col,max_col,avg_col,prod_col,future_col))]
   if(isAdjacent){
     rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getYearReal,sum,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
+    #this should be the malls with record number less or equal to 23
     un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
     infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<timespan,]$MALL_NAME)
     setnames(rent_data_year,"rent","current_rent")
@@ -349,10 +350,10 @@ predict.nn = function(nn.model,train_rent,dest_rent,rentind){
   return(nn.dest.result)
 }
 
-seperate_then_cluster = function(cornum = 2,target_time = 201612,isAdjacent =TRUE,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]])){
+seperate_then_cluster = function(cornum = 2,target_time = 201612,isAdjacent =TRUE,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]]),file_location = "~/data/rental_raw_data.csv"){
   # cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]])
   mall_cluster = kmeans(cluster_set[,-1],cornum,nstart = 20)
-  mall_cluster$cluster
+  # mall_cluster$cluster
   kmeans_cluster_result = cbind(mall_name = rent_data_year[[3]],mall_category = mall_cluster$cluster)
   kmeans_cluster_result = data.table(kmeans_cluster_result)
   mall_parts = list()
@@ -360,10 +361,10 @@ seperate_then_cluster = function(cornum = 2,target_time = 201612,isAdjacent =TRU
   for(i in 1:cornum){
     mall_parts[[i]] = kmeans_cluster_result[mall_category == i,]$mall_name
     if(isAdjacent){
-      result_filter[[i]] = calModelResultOnTimespan(12,target_time,TRUE,12,1,mall_parts[[i]])
+      result_filter[[i]] = calModelResultOnTimespan(12,target_time,TRUE,12,1,mall_parts[[i]],file_location)
     }
     else{
-      result_filter[[i]] = calModelResultOnTimespan(1,target_time,FALSE,12,1,mall_parts[[i]])
+      result_filter[[i]] = calModelResultOnTimespan(1,target_time,FALSE,12,1,mall_parts[[i]],file_location)
     }
   }
   return(result_filter)
