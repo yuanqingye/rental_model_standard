@@ -66,7 +66,7 @@ View(dest_env$rent_2017_filter_compare_mixed[abs(err2)>0.05 & abs(err2)<1])
 # temp_result = list()
 #old test, no cluster, with no detailed community data
 #the default dataset:rent_data_year with 42 matural cities no detailed community data
-temp_result_filter[[1]] = seperate_then_cluster(1)
+temp_result_filter[[1]] = cluster_then_train(1)
 temp_result[[1]] = make_2017_comparison(temp_result_filter[[1]])
 rent_data_month_with_new_community_info = rent_data_month_raw[,-(33:41)]
 mallnames = unique(rent_data_month_with_new_community_info$MALL_NAME)
@@ -84,18 +84,19 @@ rent_data_month_with_new_community_info = merge(rent_data_month_with_new_communi
 write.csv(rent_data_month_with_new_community_info,"~/data/rental_raw_data_new_community.csv")
 #new community data on 42 cities
 rent_data_year_new = getyearModeData(12,201612,mall_filter = temp_result[[1]]$mall_name,file_location = "~/data/rental_raw_data_new_community.csv")
-temp_result_filter[["newcommunitydata"]] = seperate_then_cluster(1,cluster_set = cbind(rent_data_year_new[[3]], rent_data_year_new[[6]]),file_location = "~/data/rental_raw_data_new_community.csv")
+temp_result_filter[["newcommunitydata"]] = cluster_then_train(1,cluster_set = cbind(rent_data_year_new[[3]], rent_data_year_new[[6]]),file_location = "~/data/rental_raw_data_new_community.csv")
 temp_result[["newcommunitydata"]] = make_2017_comparison(temp_result_filter[["newcommunitydata"]])
 
-temp_result_filter[[3]] = seperate_then_cluster(3)
+#using getyearModeData's mall_filter arg to get rent_data_year with mature mall
+temp_result_filter[[3]] = cluster_then_train(3)
 temp_result[[3]] = make_2017_comparison(temp_result_filter[[3]])
 
-temp_result_filter[[4]] = seperate_then_cluster(4)
+temp_result_filter[[4]] = cluster_then_train(4)
 temp_result[[4]] = make_2017_comparison(temp_result_filter[[4]])
 
-temp_result_filter[[8]] = seperate_then_cluster(4)
-temp_result[[8]] = make_2017_comparison(temp_result_filter[[8]])
-# temp_result[[5]] = seperate_then_cluster(5)
+# temp_result_filter[[8]] = cluster_then_train(4)
+# temp_result[[8]] = make_2017_comparison(temp_result_filter[[8]])
+# temp_result[[5]] = cluster_then_train(5)
 
 View(result_compare[abs(err2)>0.05 & abs(err2)<1])
 #in this model: 苏州园区，北京西四环，北京北五环，天津河东，天津东丽，成都佳灵，沈阳大东
@@ -103,36 +104,36 @@ View(result_compare[abs(err2)>0.05 & abs(err2)<1])
 
 pred_result = list()
 pred_result_filter = list()
-pred_result_filter[[4]] = seperate_then_cluster(4,201612)
+pred_result_filter[[4]] = cluster_then_train(4,201612)
 pred_result[[4]] = make_2017_comparison(pred_result_filter[[4]])
 
-pred_result_filter[[8]] = seperate_then_cluster(4,201712)
+pred_result_filter[[8]] = cluster_then_train(4,201712)
 pred_result[[8]] = make_2018_comparison(pred_result_filter[[8]])
 
 #this result come from model with DATE_ID variable for 2017
-pred_result_filter[[12]] = seperate_then_cluster(4,201612)
+pred_result_filter[[12]] = cluster_then_train(4,201612)
 pred_result[[12]] = make_2017_comparison(pred_result_filter[[12]])
 
 #this result come from model with DATE_ID variable for 2018
-pred_result_filter[[16]] = seperate_then_cluster(4,201712)
+pred_result_filter[[16]] = cluster_then_train(4,201712)
 pred_result[[16]] = make_2018_comparison(pred_result_filter[[16]])
 
 pred_result_filter_no_adjacent = list()
 pred_result_no_adjacent = list()
 # 4,8 is normal case, without the DATE_ID, 12,16 with the DATE_ID 
-pred_result_filter_no_adjacent[[4]] = seperate_then_cluster(4,201601:201612,FALSE)
+pred_result_filter_no_adjacent[[4]] = cluster_then_train(4,201601:201612,FALSE)
 pred_result_filter_no_adjacent[[4]] = lapply(lapply(pred_result_filter_no_adjacent[[4]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
 pred_result_no_adjacent[[4]] = make_2017_comparison(pred_result_filter_no_adjacent[[4]])
 
-pred_result_filter_no_adjacent[[8]] = seperate_then_cluster(4,201701:201712,FALSE)
+pred_result_filter_no_adjacent[[8]] = cluster_then_train(4,201701:201712,FALSE)
 pred_result_filter_no_adjacent[[8]] = lapply(lapply(pred_result_filter_no_adjacent[[8]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
 pred_result_no_adjacent[[8]] = make_2018_comparison(pred_result_filter_no_adjacent[[8]])
 
-pred_result_filter_no_adjacent[[12]] = seperate_then_cluster(4,201601:201612,FALSE)
+pred_result_filter_no_adjacent[[12]] = cluster_then_train(4,201601:201612,FALSE)
 pred_result_filter_no_adjacent[[12]] = lapply(lapply(pred_result_filter_no_adjacent[[12]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
 pred_result_no_adjacent[[12]] = make_2017_comparison(pred_result_filter_no_adjacent[[12]])
 
-pred_result_filter_no_adjacent[[16]] = seperate_then_cluster(4,201701:201712,FALSE)
+pred_result_filter_no_adjacent[[16]] = cluster_then_train(4,201701:201712,FALSE)
 pred_result_filter_no_adjacent[[16]] = lapply(lapply(pred_result_filter_no_adjacent[[16]],`[[`,1),`[`,,.(pred_rent = sum(pred_rent)),by = mall_name)
 pred_result_no_adjacent[[16]] = make_2018_comparison(pred_result_filter_no_adjacent[[16]])
 
@@ -213,3 +214,12 @@ rent_data_0622 = read_xlsx("~/data/rent_data_0622.xlsx")
 #clue:First kmeans the un matured mall together with other malls, then do the model
 # for infant malls, using original model and knn to seperate it, then do the model
 #seperate the training part and test/predict part
+
+#check if the comparison object compare_2017_rent_data still work
+rent_data_month_0622 = read.csv(FILE_LOCATION,stringsAsFactors = FALSE,fileEncoding = "GBK")
+rent_data_month_0622 = data.table(rent_data_month_0622)
+rent_data_month_0622$YEAR = str_trim(rent_data_month_0622$YEAR)
+rent_data_year_comparison = rent_data_month_0622[,.(year_rent = sum(rent),records = .N),by = c("MALL_NAME","YEAR")]
+rent_data_year_comparison = rent_data_year_comparison[YEAR %in% c(2017),]
+rent_data_year_comparison$MALL_NAME = enc2utf8(rent_data_year_comparison$MALL_NAME)
+temp = merge(compare_2017_rent_data,rent_data_year_comparison,by.x = "mall_name",by.y = "MALL_NAME")

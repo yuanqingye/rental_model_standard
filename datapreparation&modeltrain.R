@@ -1,4 +1,5 @@
 library(readxl)
+library(tools)
 setwd("~/R_Projects/rental_model_standard")
 compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
 compare_2017_rent_data = compare_rent_data_raw[,c(1,3:10)]
@@ -88,8 +89,9 @@ predictRentOnAdjacent = function(timespan = 12,dest_date = 201712,mall_filter = 
 predictRentOnTimeAgo = function(timespan = 1,dest_date = 201712,passnum = 12,mall_filter = NULL){
   result = calModelResultOnTimespan(timespan,dest_date,mall_filter,FALSE,passnum)
 }
-
-calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL,file_location = "~/data/rental_raw_data.csv") {
+#calculate the result based on trained model and apply it to the future data
+#The mall should have at least 24 records to get the train data(12) and the predict data(12)
+calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL,file_location = FILE_LOCATION) {
   #Train rf,nn,svm,gbm model and do cross validation for test set(last complete available record)
   cross_result = makeCrossValidation(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected,file_location)
   rent_data_year =  cross_result[[1]]
@@ -116,8 +118,8 @@ calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnu
   result = list(MSE.all.MALLS.final,un_mature_mall)
   return(result)
 }
-
-makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = "~/data/rental_raw_data.csv"){
+#traing the model and test it performance
+makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = FILE_LOCATION){
   rent_year_data = getyearModeData(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_filter,file_location)
   train_rent = rent_year_data[[4]]
   test_rent = rent_year_data[[5]]
@@ -155,7 +157,7 @@ makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRU
   return(result)
 }
 
-getMisplacedData = function(file_location = "~/data/rental_raw_data.csv",test_time = 201710:201712,predict = TRUE){
+getMisplacedData = function(file_location = FILE_LOCATION,test_time = 201710:201712,predict = TRUE){
   big_general_info_original = read.csv(file_location,stringsAsFactors = FALSE)
   big_general_info = big_general_info_original[!is.na(big_general_info_original$rent) & big_general_info_original$rent != 0,]
   # some special cases
@@ -176,9 +178,14 @@ getMisplacedData = function(file_location = "~/data/rental_raw_data.csv",test_ti
   result = list(test_mall_names,train_rent,test_rent,train_mall_names)
   return(result)
 }
-
-getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = "~/data/rental_raw_data.csv"){
-  rent_data_month_raw = read.csv(file_location,stringsAsFactors = FALSE,fileEncoding = "GBK")
+#Summarize the month data into a year
+getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = FILE_LOCATION,newtimespan = passnum){
+  if(file_ext(file_location) == 'csv'){
+    rent_data_month_raw = read.csv(file_location,stringsAsFactors = FALSE,fileEncoding = "GBK")
+  }
+  else if(file_ext(file_location) == 'xlsx'){
+    rent_data_month_raw = read_xlsx(file_location)
+  }
   rent_data_month_raw = data.table(rent_data_month_raw)
   rent_data_month_raw$MALL_NAME = enc2utf8(rent_data_month_raw$MALL_NAME)
   cpi = read_xlsx("~/data/cpi.xlsx",col_names = FALSE)
@@ -191,7 +198,9 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
     rent_data_month = rent_data_month_raw[MALL_NAME %in% mall_filter,]
   }
   else{
-    rent_data_month = rent_data_month_raw[MALL_NAME != "昆明广福路商场",]
+    #when including 曲靖翠峰商场,error happens
+  # rent_data_month = rent_data_month_raw[MALL_NAME != "昆明广福路商场",]
+    rent_data_month = rent_data_month_raw[MALL_NAME != "曲靖翠峰商场",]
   }
   unuse_col = c("MALL_NAME","MALL_CODE","YEAR","city","OPEN_DATE")
   sum_col = c("CUSTOMER_NUM","SALE","rent")
@@ -203,13 +212,24 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
   future_col = c("rent")
   freeze_col = colnames(rent_data_month)[!(colnames(rent_data_month) %in% c(unuse_col,sum_col,max_col,avg_col,prod_col,future_col))]
   if(isAdjacent){
-    rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getYearReal,sum,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
-    #this should be the malls with record number less or equal to 23
-    un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
-    infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<timespan,]$MALL_NAME)
-    setnames(rent_data_year,"rent","current_rent")
-    rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-timespan)],rep(NA,timespan)),by = "MALL_NAME"]
-  }
+    if(timespan == newtimespan){
+        rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getYearReal,sum,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
+        #this should be the malls with record number less or equal to 23
+        un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
+        infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<timespan,]$MALL_NAME)
+        setnames(rent_data_year,"rent","current_rent")
+        rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-timespan)],rep(NA,timespan)),by = "MALL_NAME"]
+     }
+     else{
+       #timespan represent the old timespan,passnum here represent the new timespan
+       rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getNextYYBasisAgg,sum,newtimespan,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
+       #this should be the malls with record number less or equal to 23
+       un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
+       infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<timespan,]$MALL_NAME)
+       setnames(rent_data_year,"rent","current_rent")
+       rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-newtimespan)],rep(NA,newtimespan)),by = "MALL_NAME"]
+     }
+    }
   else{
     rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getNextYYBasisAgg,sum,timespan,passnum),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
     un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
@@ -220,8 +240,14 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
   # rent_data_year[(MALL_NAME %in% un_mature_mall),predprice:=NA,by = "MALL_NAME"]
   rent_data_year$predprice.rent = NULL
   # base_rent = rent_data_year[,!(names(rent_data_year)%in%c("mall_name","date_id"))]
+  # this step counts the malls not contain the whole(201601-201803) out
   dest_rent = rent_data_year[DATE_ID %in% dest_date,]
-  rest_rent = rent_data_year[!is.na(rent)&(DATE_ID < min(dest_date)),]
+  if(!fewdata){
+    rest_rent = rent_data_year[!is.na(rent)&(DATE_ID < min(dest_date)),]
+  }
+  else{
+    rest_rent = rent_data_year[!is.na(rent)&(DATE_ID <= min(dest_date)),]
+  }
   test_rent = rest_rent[,.SD[(.N-test_set_size+1):.N,],by = "MALL_NAME"]
   train_rent = rest_rent[,.SD[1:(.N-test_set_size),],by = "MALL_NAME"]
   train_mall_names = train_rent$MALL_NAME
@@ -318,7 +344,7 @@ getGBMResult = function(test_mall_names = mall_names,train_rent = train_set,test
   result = list(rent.boost,compare.result.gbm,MSE.gbm.MALLS,MSE.gbm)
   return(result)
 }
-
+#using existing diff models to predict on the set you want, then combine
 predict_by_set = function(cross_result,dest_rent,dest_mall_names,rentind){
   train_rent = cross_result[[1]][[4]]
   rf_result = cross_result[[3]]
@@ -350,18 +376,24 @@ predict.nn = function(nn.model,train_rent,dest_rent,rentind){
   return(nn.dest.result)
 }
 
-seperate_then_cluster = function(cornum = 2,target_time = 201612,isAdjacent =TRUE,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]]),file_location = "~/data/rental_raw_data.csv"){
-  # cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]])
+cluster_the_set = function(cornum = 2,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]])){
+  # remove columns with any element NA
+  cluster_set = cluster_set[sapply(cluster_set, function(v) !any(is.na(v)))]
   mall_cluster = kmeans(cluster_set[,-1],cornum,nstart = 20)
   # mall_cluster$cluster
-  kmeans_cluster_result = cbind(mall_name = rent_data_year[[3]],mall_category = mall_cluster$cluster)
+  kmeans_cluster_result = cbind(mall_name = as.character(cluster_set[,1]),mall_category = mall_cluster$cluster)
   kmeans_cluster_result = data.table(kmeans_cluster_result)
+  return(kmeans_cluster_result)
+}
+
+cluster_then_train = function(cornum = 2,target_time = 201612,isAdjacent =TRUE,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]]),file_location = FILE_LOCATION,timespan = 12,newtimespan = 12){
+  kmeans_cluster_result = cluster_the_set(cornum,cluster_set)
   mall_parts = list()
   result_filter = list()
   for(i in 1:cornum){
     mall_parts[[i]] = kmeans_cluster_result[mall_category == i,]$mall_name
     if(isAdjacent){
-      result_filter[[i]] = calModelResultOnTimespan(12,target_time,TRUE,12,1,mall_parts[[i]],file_location)
+      result_filter[[i]] = calModelResultOnTimespan(timespan,target_time,TRUE,newtimespan,1,mall_parts[[i]],file_location)
     }
     else{
       result_filter[[i]] = calModelResultOnTimespan(1,target_time,FALSE,12,1,mall_parts[[i]],file_location)
@@ -369,7 +401,8 @@ seperate_then_cluster = function(cornum = 2,target_time = 201612,isAdjacent =TRU
   }
   return(result_filter)
 }
-  
+
+#combine each cluster's result together  
 make_2017_comparison = function(result_filter){  
   if(is.data.table(result_filter[[1]])){
     result_combined = rbindlist(result_filter)
@@ -399,6 +432,15 @@ make_2018_comparison = function(result_filter){
   result_compare[,rate3:=(`18_pred3`-`17_real_rent`)/`17_real_rent`]
   setcolorder(result_compare,c(1:3,ncol(result_compare)-1,4:8,ncol(result_compare),9:10))
   return(result_compare)
+}
+
+check_predict_effect = function(dataset){
+  dataset = dataset[complete.cases(dataset) & abs(dataset$rate3)<1,]
+  e_rmse = rmse(dataset$rate3,dataset$target_rate)
+  e_max = max(abs(dataset$rate3-dataset$target_rate),na.rm = TRUE)
+  e_freq = sum((dataset$rate3-dataset$target_rate)>0.2,na.rm = TRUE)
+  result = list(rmse = e_rmse,max_error = e_max,large_error_freq = e_freq)
+  return(result)
 }
 
 `%=%` = function(var,value){
