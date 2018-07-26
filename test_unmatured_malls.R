@@ -83,9 +83,66 @@ View(merge(temp,result_include_unmature[[5]][,c("mall_name","err3")],by = "mall_
 
 FILE_LOCATION = "~/data/rent_data_up_to_201806_edit.xlsx"
 fewdata = TRUE
-cluster_model_list = list()
-cluster_result_list = list()
+cluster_model_list = list(list(list()))
+cluster_result_list = list(list(list()))
+cluster_effect_list = list(list(list()))
 rent_data_month_2018_06 = read_xlsx(FILE_LOCATION)
+temp_result = make_comparison_sample_from_dataset(rent_data_month_2018_06)
+compare_2017_rent_data = temp_result[[1]]
+compare_2018_rent_data = temp_result[[2]]
+
 rent_data_year_2018_06 = getyearModeData(dest_date = 201806)
 temp = cluster_then_train(3,201712,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
 cluster_model_list[["201806"]][["pred"]][[3]] = temp
+cluster_result_list[["201806"]][["pred"]][[3]] = make_2018_comparison(cluster_model_list[["201806"]][["pred"]][[3]])
+cluster_effect_list[["201806"]][["pred"]][[3]] = check_predict_effect(cluster_result_list[["201806"]][["pred"]][[3]])
+
+temp = cluster_then_train(3,201612,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
+cluster_model_list[["201806"]][["esti"]][[3]] = temp
+cluster_result_list[["201806"]][["esti"]][[3]] = make_2017_comparison(cluster_model_list[["201806"]][["esti"]][[3]])
+
+#normal prediction
+for(i in c(7)){
+  temp = cluster_then_train(i,201712,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
+  cluster_model_list[["201806"]][["pred"]][[i]] = temp
+  cluster_result_list[["201806"]][["pred"]][[i]] = make_2018_comparison(cluster_model_list[["201806"]][["pred"]][[i]])
+  cluster_effect_list[["201806"]][["pred"]][[i]] = check_predict_effect(cluster_result_list[["201806"]][["pred"]][[i]])
+  
+  temp = cluster_then_train(i,201612,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
+  cluster_model_list[["201806"]][["esti"]][[i]] = temp
+  cluster_result_list[["201806"]][["esti"]][[i]] = make_2017_comparison(cluster_model_list[["201806"]][["esti"]][[i]])
+  cluster_effect_list[["201806"]][["esti"]][[i]] = check_estimate_effect(cluster_result_list[["201806"]][["esti"]][[i]])
+}
+
+#predict 2019 by 201801-201806 in 6-12 mode
+for(i in 3:7){
+  temp = cluster_then_train(i,201806,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 6,newtimespan = 12)
+  cluster_model_list[["201806"]][["pred_12_by_6"]][[i]] = temp
+  cluster_result_list[["201806"]][["pred_12_by_6"]][[i]] = make_2018_comparison(cluster_model_list[["201806"]][["pred_12_by_6"]][[i]])
+  cluster_effect_list[["201806"]][["pred_12_by_6"]][[i]] = check_predict_effect(cluster_result_list[["201806"]][["pred_12_by_6"]][[i]])
+  
+  temp = cluster_then_train(i,201612,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 6,newtimespan = 12)
+  cluster_model_list[["201806"]][["esti_12_by_6"]][[i]] = temp
+  cluster_result_list[["201806"]][["esti_12_by_6"]][[i]] = make_2017_comparison(cluster_model_list[["201806"]][["esti_12_by_6"]][[i]])
+  cluster_effect_list[["201806"]][["esti_12_by_6"]][[i]] = check_estimate_effect(cluster_result_list[["201806"]][["esti_12_by_6"]][[i]])
+}
+
+#predict 2019 by 201801-201806 in 1-1 basis
+for(i in 4:7){
+  temp = cluster_then_train(i,201806,12,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 1,newtimespan = 1)
+  cluster_model_list[["201806"]][["pred_1_by_1"]][[i]] = temp
+  cluster_result_list[["201806"]][["pred_1_by_1"]][[i]] = make_2018_comparison(cluster_model_list[["201806"]][["pred_1_by_1"]][[i]])
+  # cluster_effect_list[["201806"]][["pred_1_by_1"]][[i]] = check_predict_effect(cluster_result_list[["201806"]][["pred_1_by_1"]][[i]])
+  
+  temp = cluster_then_train(i,201612,12,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 1,newtimespan = 1)
+  cluster_model_list[["201806"]][["esti_1_by_1"]][[i]] = temp
+  cluster_result_list[["201806"]][["esti_1_by_1"]][[i]] = make_2017_comparison(cluster_model_list[["201806"]][["esti_1_by_1"]][[i]])
+  # cluster_effect_list[["201806"]][["esti_1_by_1"]][[i]] = check_estimate_effect(cluster_result_list[["201806"]][["esti_1_by_1"]][[i]])
+}
+
+temp = list()
+temp = calModelResultOnTimespan(1,201707:201806,FALSE,passnum = 12,newtimespan = 1)
+temp[["total_cal"]] = temp[[1]][,.(pred_rent_2019 = sum(pred_rent),pred_rent_2019_2 = sum(pred_rent,na.rm = TRUE),record_num = .N,record_num_2 = sum(!is.na(pred_rent))),by = mall_name]
+
+temp = calModelResultOnTimespan(1,201707:201806,FALSE,passnum = 18,newtimespan = 1)
+temp[["total_cal"]] = temp[[1]][,.(pred_rent_2019 = sum(pred_rent),pred_rent_2019_2 = sum(pred_rent,na.rm = TRUE),record_num = .N,record_num_2 = sum(!is.na(pred_rent))),by = mall_name]

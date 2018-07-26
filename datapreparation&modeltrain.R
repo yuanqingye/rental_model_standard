@@ -1,14 +1,12 @@
 library(readxl)
 library(tools)
+library(Metrics)
 setwd("~/R_Projects/rental_model_standard")
-compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
-compare_2017_rent_data = compare_rent_data_raw[,c(1,3:10)]
-compare_2017_rent_data = data.table(compare_2017_rent_data)
-compare_2018_rent_data = compare_rent_data_raw[,c(1,17:25)]
-compare_2018_rent_data = data.table(compare_2018_rent_data)
-setnames(compare_2018_rent_data,"rate1__1","rate1")
-setnames(compare_2018_rent_data,"rate2__1","rate2")
-
+# compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
+# rent_data_month_2018_06 = read_xlsx(FILE_LOCATION)
+# temp_result = make_comparison_sample_from_dataset(rent_data_month_2018_06)
+# compare_2017_rent_data = temp_result[[1]]
+# compare_2018_rent_data = temp_result[[2]]
 main = function(){
   temp = getMisplacedData()
   mall_names = temp[[1]]
@@ -91,9 +89,9 @@ predictRentOnTimeAgo = function(timespan = 1,dest_date = 201712,passnum = 12,mal
 }
 #calculate the result based on trained model and apply it to the future data
 #The mall should have at least 24 records to get the train data(12) and the predict data(12)
-calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL,file_location = FILE_LOCATION) {
+calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL,file_location = FILE_LOCATION,newtimespan = passnum) {
   #Train rf,nn,svm,gbm model and do cross validation for test set(last complete available record)
-  cross_result = makeCrossValidation(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected,file_location)
+  cross_result = makeCrossValidation(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected,file_location,newtimespan)
   rent_data_year =  cross_result[[1]]
   MSE.all.MALLS = cross_result[[2]]
   
@@ -119,8 +117,8 @@ calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnu
   return(result)
 }
 #traing the model and test it performance
-makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = FILE_LOCATION){
-  rent_year_data = getyearModeData(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_filter,file_location)
+makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = FILE_LOCATION,newtimespan = passnum){
+  rent_year_data = getyearModeData(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_filter,file_location,newtimespan)
   train_rent = rent_year_data[[4]]
   test_rent = rent_year_data[[5]]
   dest_rent = rent_year_data[[6]]
@@ -211,7 +209,7 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
               "JINKOU_NUM","AREA_XINYETAI","XINYETAI_NUM","GDP","POPULATION","SALARY")
   future_col = c("rent")
   freeze_col = colnames(rent_data_month)[!(colnames(rent_data_month) %in% c(unuse_col,sum_col,max_col,avg_col,prod_col,future_col))]
-  if(isAdjacent){
+  if(isAdjacent){#passnum must equals to timespan in adjacent case
     if(timespan == newtimespan){
         rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getYearReal,sum,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
         #this should be the malls with record number less or equal to 23
@@ -231,11 +229,11 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
      }
     }
   else{
-    rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getNextYYBasisAgg,sum,timespan,passnum),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
-    un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
+    #the parameter timespan,passnum and newtimespan can cover all case
+    rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getNextYYBasisAgg,sum,newtimespan,passnum),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
+    un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<timespan+passnum,]$MALL_NAME
     infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<passnum,]$MALL_NAME)
     setnames(rent_data_year,"rent","current_rent")
-    rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-passnum)],rep(NA,passnum)),by = "MALL_NAME"]
     }
   # rent_data_year[(MALL_NAME %in% un_mature_mall),predprice:=NA,by = "MALL_NAME"]
   rent_data_year$predprice.rent = NULL
@@ -386,21 +384,38 @@ cluster_the_set = function(cornum = 2,cluster_set = cbind(rent_data_year[[3]],re
   return(kmeans_cluster_result)
 }
 
-cluster_then_train = function(cornum = 2,target_time = 201612,isAdjacent =TRUE,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]]),file_location = FILE_LOCATION,timespan = 12,newtimespan = 12){
+cluster_then_train = function(cornum = 2,target_time = 201612,isAdjacent =TRUE,passnum = 12,cluster_set = cbind(rent_data_year[[3]],rent_data_year[[6]]),file_location = FILE_LOCATION,timespan = 12,newtimespan = 12){
   kmeans_cluster_result = cluster_the_set(cornum,cluster_set)
   mall_parts = list()
   result_filter = list()
   for(i in 1:cornum){
     mall_parts[[i]] = kmeans_cluster_result[mall_category == i,]$mall_name
     if(isAdjacent){
-      result_filter[[i]] = calModelResultOnTimespan(timespan,target_time,TRUE,newtimespan,1,mall_parts[[i]],file_location)
+      result_filter[[i]] = calModelResultOnTimespan(timespan,target_time,TRUE,passnum,1,mall_parts[[i]],file_location,newtimespan)
     }
     else{
-      result_filter[[i]] = calModelResultOnTimespan(1,target_time,FALSE,12,1,mall_parts[[i]],file_location)
+      result_filter[[i]] = calModelResultOnTimespan(timespan,target_time,FALSE,passnum,1,mall_parts[[i]],file_location,newtimespan)
+      # result_filter[[i]] = calModelResultOnTimespan(1,target_time,FALSE,12,1,mall_parts[[i]],file_location)
     }
   }
   return(result_filter)
 }
+
+make_comparison_sample_from_dataset = function(dataset){
+  dataset = data.table(dataset)
+  dataset$YEAR = str_trim(dataset$YEAR)
+  rent_data_year_comparison = dataset[,.(year_rent = sum(rent),records = .N),by = c("MALL_NAME","YEAR")]
+  rent_data_year_comparison = rent_data_year_comparison[,year_rent := year_rent*12/records]
+  rent_data_year_comparison = rent_data_year_comparison[YEAR %in% c(2017),]
+  rent_data_year_comparison$MALL_NAME = enc2utf8(rent_data_year_comparison$MALL_NAME)
+  if(!exists("compare_rent_data_raw")){
+    compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
+  }
+  compare_2017_rent_data = merge(compare_rent_data_raw[,c("mall_name","17_pred_mix","diff_rent","err1","err2","err")],rent_data_year_comparison[,c("MALL_NAME","year_rent")],by.x = "mall_name",by.y = "MALL_NAME",all.y = TRUE)
+  compare_2018_rent_data = merge(compare_rent_data_raw[,c("mall_name","18_estimate","18_target","rate1","rate2","eval_rate","target_rate")],rent_data_year_comparison[,c("MALL_NAME","year_rent")],by.x = "mall_name",by.y = "MALL_NAME",all.y = TRUE)
+  result = list(compare_2017_rent_data,compare_2018_rent_data)
+  return(result)
+    }
 
 #combine each cluster's result together  
 make_2017_comparison = function(result_filter){  
@@ -413,8 +428,8 @@ make_2017_comparison = function(result_filter){
   result_combined = data.table(result_combined)
   result_compare = setDT(compare_2017_rent_data)[result_combined[,c("mall_name","pred_rent")],on = "mall_name"]
   setnames(result_compare,"pred_rent","17_pred3")
-  result_compare[,err3:=(`17_pred3`-`17_real_rent`)/`17_real_rent`]
-  setcolorder(result_compare,c(1:8,ncol(result_compare),9:(ncol(result_compare)-1)))
+  result_compare[,err3:=(`17_pred3`-`year_rent`)/`year_rent`]
+  setcolorder(result_compare,c(1,7,2,8,3,4,5,6,ncol(result_compare)))
   return(result_compare)
 }
 
@@ -423,22 +438,32 @@ make_2018_comparison = function(result_filter){
     result_combined = rbindlist(result_filter)
   }
   else{
-  result_combined = rbindlist(lapply(result_filter,`[[`,1))
+    result_combined = rbindlist(lapply(result_filter,`[[`,1))
   }
   result_combined = data.table(result_combined)
   result_compare = setDT(compare_2018_rent_data)[result_combined[,c("mall_name","pred_rent")],on = "mall_name"]
   setnames(result_compare,"pred_rent","18_pred3")
-  setnames(result_compare,"17_real_rent__1","17_real_rent")
-  result_compare[,rate3:=(`18_pred3`-`17_real_rent`)/`17_real_rent`]
-  setcolorder(result_compare,c(1:3,ncol(result_compare)-1,4:8,ncol(result_compare),9:10))
+# setnames(result_compare,"17_real_rent__1","17_real_rent")
+  result_compare[,rate3:=(`18_pred3`-`year_rent`)/`year_rent`]
+  setcolorder(result_compare,c(1,8,2,9,3,4,5,ncol(result_compare),6,7))
   return(result_compare)
 }
 
 check_predict_effect = function(dataset){
+  library(Metrics)
   dataset = dataset[complete.cases(dataset) & abs(dataset$rate3)<1,]
   e_rmse = rmse(dataset$rate3,dataset$target_rate)
   e_max = max(abs(dataset$rate3-dataset$target_rate),na.rm = TRUE)
-  e_freq = sum((dataset$rate3-dataset$target_rate)>0.2,na.rm = TRUE)
+  e_freq = sum(abs(dataset$rate3-dataset$target_rate)>0.2,na.rm = TRUE)
+  result = list(rmse = e_rmse,max_error = e_max,large_error_freq = e_freq)
+  return(result)
+}
+
+check_estimate_effect = function(dataset){
+  dataset = dataset[complete.cases(dataset) & abs(dataset$err3)<1,]
+  e_rmse = rmse(dataset$err3,0)
+  e_max = max(abs(dataset$err3),na.rm = TRUE)
+  e_freq = sum(abs(dataset$err3)>0.05,na.rm = TRUE)
   result = list(rmse = e_rmse,max_error = e_max,large_error_freq = e_freq)
   return(result)
 }

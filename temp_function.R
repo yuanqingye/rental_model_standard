@@ -2,8 +2,8 @@ setwd("~/R_Projects/rental_model_standard")
 compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
 compare_2017_rent_data = compare_rent_data_raw[,c(1,3:10)]
 compare_2017_rent_data = data.table(compare_2017_rent_data)
-dest_env$result_2017_year_notadjacent = calModelResultOnTimespan(1,201601:201612,FALSE,12)
-dest_env$temp_2017_result = dest_env$result_2017_year_notadjacent[[1]][,.(pred_rent_2017 = sum(pred_rent)),by = mall_name]
+dest_env$result_2017_year_notadjacent = calModelResultOnTimespan(1,201601:201612,FALSE,passnum = 12,newtimespan = 1)
+dest_env$temp_2017_result = dest_env$result_2017_year_notadjacent[[1]][,.(pred_rent_2017 = sum(pred_rent),record_num = .N),by = mall_name]
 dest_env$temp_2017_result = data.table(dest_env$temp_2017_result)
 dest_env$rent_2017_compare = setDT(compare_2017_rent_data)[dest_env$temp_2017_result,on = "mall_name"]
 setnames(dest_env$rent_2017_compare,"pred_rent_2017","17_pred3")
