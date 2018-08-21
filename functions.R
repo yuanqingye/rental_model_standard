@@ -264,6 +264,8 @@ retry_wrapper = function(f,...,retrytime = 5){
   return(result)
 }
 
+#sum up the value from current point to current + k point,but will denote by the
+#last point's time point
 getYearPara = function(v,f,k = 12){
   t = vector(mode = "numeric",length = 0L)
   for(i in 1:(length(v)-(k-1))){
@@ -272,6 +274,9 @@ getYearPara = function(v,f,k = 12){
   return(t)
 }
 
+#sum up the value actually k time unit after the sum star point, and sum from
+#that point to another k time unit,in adjacent case that actually the next adjacent
+#sum batch(passnum = timespan) and newtimespan = timespan
 getYearReal = function(v,f,k = 12){
   t = vector(mode = "numeric",length = 0L)
   for(i in (k+1):(length(v)-(k-1))){
@@ -280,6 +285,7 @@ getYearReal = function(v,f,k = 12){
   return(t)
 }
 
+#in the case that passnum != timespan(not adjacent) and we have a new timespan
 getNextYYBasisAgg = function(v,f,grpnum,passnum){
   t = vector(mode = "numeric",length = 0L)
   for(i in 1:(length(v)-(passnum+grpnum-1))){

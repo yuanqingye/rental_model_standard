@@ -4,8 +4,8 @@ library(pinyin)
 library(geosphere)
 library(openxlsx)
 #mall code is key info for updating, need to make sure new info in the excel
-mall_code = m$商场代码
-options(timeout= 4000000)
+# mall_code = m$商场代码
+# options(timeout= 4000000)
 
 addupdate = function(mall_code = NULL){
   #this programm need to be run after the main programm

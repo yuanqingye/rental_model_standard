@@ -1,6 +1,6 @@
 # FILE_LOCATION = "~/data/rental_raw_data.csv"
 FILE_LOCATION = "~/data/rent_data_0622_edit.csv"
-
+rent_rate = read_xlsx("~/data/rent_rate.xlsx")
 #train model with unmatured malls involved and using the old data
 #origin rent_data_year with only matured malls is stored in rent_data_year_copy
 #using as much data as possible
@@ -86,16 +86,24 @@ fewdata = TRUE
 cluster_model_list = list(list(list()))
 cluster_result_list = list(list(list()))
 cluster_effect_list = list(list(list()))
+kmeans_cluster_result_list = list()
 rent_data_month_2018_06 = read_xlsx(FILE_LOCATION)
 temp_result = make_comparison_sample_from_dataset(rent_data_month_2018_06)
 compare_2017_rent_data = temp_result[[1]]
 compare_2018_rent_data = temp_result[[2]]
 
 rent_data_year_2018_06 = getyearModeData(dest_date = 201806)
-temp = cluster_then_train(3,201712,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
-cluster_model_list[["201806"]][["pred"]][[3]] = temp
-cluster_result_list[["201806"]][["pred"]][[3]] = make_2018_comparison(cluster_model_list[["201806"]][["pred"]][[3]])
-cluster_effect_list[["201806"]][["pred"]][[3]] = check_predict_effect(cluster_result_list[["201806"]][["pred"]][[3]])
+kmeans_cluster_result_list[[4]] = cluster_the_set(4,cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]))
+temp = cluster_then_train(4,201712,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
+cluster_model_list[["201712"]][["pred"]][[4]] = temp
+cluster_result_list[["201712"]][["pred"]][[4]] = make_2018_comparison(cluster_model_list[["201712"]][["pred"]][[4]])
+cluster_effect_list[["201712"]][["pred"]][[4]] = check_predict_effect(cluster_result_list[["201712"]][["pred"]][[4]])
+cluster_result_list[["201712"]][["pred"]][[4]][,diff:= rate3 - target_rate]
+t4 = cluster_result_list[["201712"]][["pred"]][[4]][abs(diff) > 0.06,c("mall_name","rate3","target_rate","diff")]
+t4 = merge(t4,kmeans_cluster_result_list[[4]],by = "mall_name",all.x = TRUE)
+t4 = merge(t4,rent_rate[,c("mall_name","rent_rate")],by = "mall_name",all.x = TRUE)
+#rent_data_year_temp is created when the function run
+View(rent_data_year_temp[DATE_ID%in% 201704:201706,c("MALL_NAME","DATE_ID","SALE","current_rent","rent","AGE")])
 
 temp = cluster_then_train(3,201612,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
 cluster_model_list[["201806"]][["esti"]][[3]] = temp
@@ -114,13 +122,14 @@ for(i in c(7)){
   cluster_effect_list[["201806"]][["esti"]][[i]] = check_estimate_effect(cluster_result_list[["201806"]][["esti"]][[i]])
 }
 
-#predict 2019 by 201801-201806 in 6-12 mode
+#predict 2018 by 201801-201806 in 6-12 mode
 for(i in 3:7){
-  temp = cluster_then_train(i,201806,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 6,newtimespan = 12)
+  temp = cluster_then_train(i,201712,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 6,newtimespan = 12)
   cluster_model_list[["201806"]][["pred_12_by_6"]][[i]] = temp
   cluster_result_list[["201806"]][["pred_12_by_6"]][[i]] = make_2018_comparison(cluster_model_list[["201806"]][["pred_12_by_6"]][[i]])
   cluster_effect_list[["201806"]][["pred_12_by_6"]][[i]] = check_predict_effect(cluster_result_list[["201806"]][["pred_12_by_6"]][[i]])
-  
+}
+for(i in 3:7){
   temp = cluster_then_train(i,201612,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 6,newtimespan = 12)
   cluster_model_list[["201806"]][["esti_12_by_6"]][[i]] = temp
   cluster_result_list[["201806"]][["esti_12_by_6"]][[i]] = make_2017_comparison(cluster_model_list[["201806"]][["esti_12_by_6"]][[i]])
@@ -146,3 +155,15 @@ temp[["total_cal"]] = temp[[1]][,.(pred_rent_2019 = sum(pred_rent),pred_rent_201
 
 temp = calModelResultOnTimespan(1,201707:201806,FALSE,passnum = 18,newtimespan = 1)
 temp[["total_cal"]] = temp[[1]][,.(pred_rent_2019 = sum(pred_rent),pred_rent_2019_2 = sum(pred_rent,na.rm = TRUE),record_num = .N,record_num_2 = sum(!is.na(pred_rent))),by = mall_name]
+
+for(i in 4:7){
+  temp = cluster_then_train(i,201806,passnum = 18,isAdjacent = FALSE,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
+  cluster_model_list[["2019allyear"]][["pred"]][[i]] = temp
+  cluster_result_list[["2019allyear"]][["pred"]][[i]] = make_2018_comparison(cluster_model_list[["2019allyear"]][["pred"]][[i]])
+  cluster_effect_list[["2019allyear"]][["pred"]][[i]] = check_predict_effect(cluster_result_list[["2019allyear"]][["pred"]][[i]])
+  
+  temp = cluster_then_train(i,201612,passnum = 18,isAdjacent = FALSE,cluster_set = cbind(rent_data_year_2018_06[[3]],rent_data_year_2018_06[[6]]),timespan = 3,newtimespan = 12)
+  cluster_model_list[["2019allyear"]][["esti"]][[i]] = temp
+  cluster_result_list[["2019allyear"]][["esti"]][[i]] = make_2017_comparison(cluster_model_list[["2019allyear"]][["esti"]][[i]])
+  cluster_effect_list[["2019allyear"]][["esti"]][[i]] = check_estimate_effect(cluster_result_list[["2019allyear"]][["esti"]][[i]])
+}

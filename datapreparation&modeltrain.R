@@ -1,6 +1,8 @@
 library(readxl)
 library(tools)
 library(Metrics)
+library(lime)
+library(caret)
 setwd("~/R_Projects/rental_model_standard")
 # compare_rent_data_raw = read_xlsx("./data/2017pred_summary.xlsx")
 # rent_data_month_2018_06 = read_xlsx(FILE_LOCATION)
@@ -220,12 +222,12 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
      }
      else{
        #timespan represent the old timespan,passnum here represent the new timespan
-       rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getNextYYBasisAgg,sum,newtimespan,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
+        rent_data_year = rent_data_month[,c(lapply(.SD[,sum_col,with=FALSE],getYearPara,sum,timespan),lapply(.SD[,avg_col,with=FALSE],getYearPara,mean,timespan),lapply(.SD[,max_col,with = FALSE],getYearPara,max,timespan),lapply(.SD[,prod_col,with=FALSE],getYearPara,prod,timespan),"predprice"=lapply(.SD[,future_col,with = FALSE],getNextYYBasisAgg,sum,newtimespan,timespan),.SD[.N,freeze_col,with=FALSE]),by = "MALL_NAME"]
        #this should be the malls with record number less or equal to 23
-       un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
-       infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<timespan,]$MALL_NAME)
-       setnames(rent_data_year,"rent","current_rent")
-       rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-newtimespan)],rep(NA,newtimespan)),by = "MALL_NAME"]
+        un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<=timespan,]$MALL_NAME
+        infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<timespan,]$MALL_NAME)
+        setnames(rent_data_year,"rent","current_rent")
+        rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-newtimespan)],rep(NA,newtimespan)),by = "MALL_NAME"]
      }
     }
   else{
@@ -234,6 +236,7 @@ getyearModeData = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,pa
     un_mature_mall = rent_data_year[,.(record_num = .N),by = MALL_NAME][record_num<timespan+passnum,]$MALL_NAME
     infant_mall = unique(rent_data_month[,.(record_num = .N),by = MALL_NAME][record_num<passnum,]$MALL_NAME)
     setnames(rent_data_year,"rent","current_rent")
+    rent_data_year[!(MALL_NAME %in% un_mature_mall),rent:=c(predprice.rent[1:(.N-(passnum+timespan-1))],rep(NA,(passnum+timespan-1))),by = "MALL_NAME"]
     }
   # rent_data_year[(MALL_NAME %in% un_mature_mall),predprice:=NA,by = "MALL_NAME"]
   rent_data_year$predprice.rent = NULL
@@ -477,3 +480,30 @@ check_estimate_effect = function(dataset){
 ff = function(n){
   prod(1:n)
 }
+
+lime_explain = function(model = NULL,model_name = "svm", feature_num = 5,faicify_num = 3,dataset = train_rent){
+  if(is.null(model)){
+    model = train(rent ~ .,data = dataset,method = model_name)
+  }
+  explaner = lime(dataset,model)
+  explanation = explain(dataset[1:faicify_num,],explaner,n_features = feature_num)
+  result_plot = plot_features(explanation, ncol = 1)
+  return(list(model,explanation,result_plot))
+}
+
+#if you want lime apply to new model,
+predict_model.svm <- function(x, newdata, type, ...) {
+  res <- predict(x, newdata = newdata, ...)
+  raw = data.frame(Response = res)
+  return(raw)
+}
+
+model_type.svm <- function(x, ...) 'regression'
+
+predict_model.gbm <- function(x, newdata, type, ...) {
+  res <- predict(x, newdata = newdata, n.trees =100000,...)
+  raw = data.frame(Response = res)
+  return(raw)
+}
+
+model_type.gbm <- function(x, ...) 'regression'
