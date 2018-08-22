@@ -93,17 +93,18 @@ predictRentOnTimeAgo = function(timespan = 1,dest_date = 201712,passnum = 12,mal
 #The mall should have at least 24 records to get the train data(12) and the predict data(12)
 calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_selected = NULL,file_location = FILE_LOCATION,newtimespan = passnum) {
   #Train rf,nn,svm,gbm model and do cross validation for test set(last complete available record)
-  cross_result = makeCrossValidation(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected,file_location,newtimespan)
-  rent_data_year =  cross_result[[1]]
-  MSE.all.MALLS = cross_result[[2]]
+  #old name : cross_result
+  model_and_cv_result = trainModelandMakeCV(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_selected,file_location,newtimespan)
+  MSE.all.MALLS = model_and_cv_result[[2]]
+  rent_data_year =  model_and_cv_result[[1]]
   
-  rentind = which(names(dest_rent) %in% c("rent"))
   dest_rent = rent_data_year[[6]]
   dest_mall_names = rent_data_year[[3]]
   un_mature_mall = rent_data_year[[7]]
+  rentind = which(names(dest_rent) %in% c("rent"))
   
   #using trained model,based on dest set to predict
-  dest_view = predict_by_set(cross_result,dest_rent,dest_mall_names,rentind)
+  dest_view = predict_by_set(model_and_cv_result,dest_rent,dest_mall_names,rentind)
   
   # suppose you only have part of the result's
   MSE.all.MALLS.mixed = setDT(MSE.all.MALLS)[dest_view, on="mall_name"]
@@ -115,11 +116,19 @@ calModelResultOnTimespan <- function(timespan,dest_date,isAdjacent = TRUE,passnu
   matrix = as.matrix(MSE.all.MALLS.mixed[,c("rf_rent","nn_rent","svm_rent","gbm_rent")])
   decision = matrix[cbind(1:nrow(MSE.all.MALLS.mixed), min_index)]
   MSE.all.MALLS.final = cbind.data.frame(MSE.all.MALLS.mixed[,c("mall_name","rf_rent","nn_rent","svm_rent","gbm_rent")],pred_rent = decision)
-  result = list(MSE.all.MALLS.final,un_mature_mall)
+  result = list(
+    MSE.all.MALLS.final,
+    un_mature_mall,
+    rent_data_year,
+    svm = model_and_cv_result[["svm"]],
+    rf = model_and_cv_result[["rf"]],
+    gbm = model_and_cv_result[["gbm"]],
+    nn = model_and_cv_result[["nn"]]
+  )
   return(result)
 }
 #traing the model and test it performance
-makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = FILE_LOCATION,newtimespan = passnum){
+trainModelandMakeCV = function(timespan = 12,dest_date = 201712,isAdjacent = TRUE,passnum = 12,test_set_size = 1,mall_filter = NULL,file_location = FILE_LOCATION,newtimespan = passnum){
   rent_year_data = getyearModeData(timespan,dest_date,isAdjacent,passnum,test_set_size,mall_filter,file_location,newtimespan)
   train_rent = rent_year_data[[4]]
   test_rent = rent_year_data[[5]]
@@ -153,7 +162,8 @@ makeCrossValidation = function(timespan = 12,dest_date = 201712,isAdjacent = TRU
     svm_perc = MSE.svm.MALLS$perc,
     gbm_perc = MSE.gbm.MALLS$perc
   )
-  result = list(rent_year_data,MSE.all.MALLS,svm_result,rf_result,gbm_result,nn_result)
+  result = list(rent_year_data,MSE.all.MALLS,svm = svm_result,rf = rf_result,gbm = gbm_result,nn = nn_result)
+  class(result) = "rent_model"
   return(result)
 }
 
@@ -346,12 +356,12 @@ getGBMResult = function(test_mall_names = mall_names,train_rent = train_set,test
   return(result)
 }
 #using existing diff models to predict on the set you want, then combine
-predict_by_set = function(cross_result,dest_rent,dest_mall_names,rentind){
-  train_rent = cross_result[[1]][[4]]
-  rf_result = cross_result[[3]]
-  svm_result = cross_result[[4]]
-  gbm_result = cross_result[[5]]
-  nn_result = cross_result[[6]]
+predict_by_set = function(model_and_cv_result,dest_rent,dest_mall_names,rentind){
+  train_rent = model_and_cv_result[[1]][[4]]
+  rf_result = model_and_cv_result[[3]]
+  svm_result = model_and_cv_result[[4]]
+  gbm_result = model_and_cv_result[[5]]
+  nn_result = model_and_cv_result[[6]]
   rentind = which(names(dest_rent) %in% c("rent"))
   rf.model = rf_result[[1]]
   rf.dest.result= predict(rf.model,dest_rent[-rentind])
@@ -507,3 +517,39 @@ predict_model.gbm <- function(x, newdata, type, ...) {
 }
 
 model_type.gbm <- function(x, ...) 'regression'
+
+predict_model.randomForest <- function(x, newdata, type, ...) {
+  res <- predict(x, newdata = newdata,...)
+  raw = data.frame(Response = res)
+  return(raw)
+}
+
+model_type.randomForest <- function(x, ...) 'regression'
+
+
+predict_model.rent_model <- function(model_and_cv_result, newdata, type) {
+  # L <- list(...)
+  rent_data_year =  model_and_cv_result[[1]]
+  mall_names = rent_data_year[[3]]
+  MSE.all.MALLS = model_and_cv_result[[2]]
+  rentind = which(names(newdata) %in% c("rent"))
+  
+  #using trained model,based on dest set to predict
+  dest_view = predict_by_set(model_and_cv_result,newdata,mall_names,rentind)
+  
+  # suppose you only have part of the result's
+  MSE.all.MALLS.mixed = setDT(MSE.all.MALLS)[dest_view, on="mall_name"]
+  if(!is.null(mall_names)){
+    MSE.all.MALLS.mixed = MSE.all.MALLS.mixed[mall_name %in% mall_names,]
+    MSE.all.MALLS.mixed[match(mall_names, MSE.all.MALLS.mixed$mall_name),]
+  }
+  #get min index of the original matrix
+  min_index = apply(abs(MSE.all.MALLS.mixed[,c("perc","nn_perc","svm_perc","gbm_perc")]),1,which.min)
+  min_index = as.numeric(min_index)
+  matrix = as.matrix(MSE.all.MALLS.mixed[,c("rf_rent","nn_rent","svm_rent","gbm_rent")])
+  decision = matrix[cbind(1:nrow(MSE.all.MALLS.mixed), min_index)]
+  raw = data.frame(Response = decision)
+  return(raw)
+}
+
+model_type.rent_model <- function(x, ...) 'regression'
